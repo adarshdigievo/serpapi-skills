@@ -23,9 +23,9 @@ npx skills add serpapi/skills --skill serpapi-setup --skill serpapi-web-search -
 
 ### Standard and manual installation
 
-Both skills follow the open [Agent Skills specification](https://agentskills.io/specification): a named directory, a `SKILL.md` with YAML `name` and `description`, and supporting files reached through relative links. The format is portable; the standard does not require one universal installation directory.
+Both skills follow the open [Agent Skills specification](https://agentskills.io/specification).
 
-To install manually, copy the **entire** `skills/serpapi-setup` and `skills/serpapi-web-search` directories into the same user-level skill directory below. The resulting paths must end in `serpapi-setup/SKILL.md` and `serpapi-web-search/SKILL.md`; copying only the Markdown entry points breaks their references. Back up an existing installation before replacing it.
+To install manually, copy both skill folders into your client's directory:
 
 | Client | User-level skill directory | Official instructions |
 |---|---|---|
@@ -39,10 +39,6 @@ To install manually, copy the **entire** `skills/serpapi-setup` and `skills/serp
 | Gemini CLI | `~/.agents/skills/` or `~/.gemini/skills/` | [Gemini skills](https://geminicli.com/docs/cli/skills/) |
 | OpenCode | `~/.agents/skills/` or `~/.config/opencode/skills/` | [OpenCode skills](https://opencode.ai/docs/skills/) |
 | Cline | `~/.cline/skills/` | [Cline skills](https://docs.cline.bot/customization/skills) |
-
-Choose one directory per client to avoid duplicate installations. `~` means your user home directory. On Windows, home-relative directories are beneath your user profile; Devin's native directory is `%APPDATA%\devin\skills\`. Client policies and disabled-skill settings can prevent discovery. Check the linked client documentation if the skill does not appear.
-
-Windsurf continues as [Devin Desktop](https://docs.devin.ai/desktop/changelog). Its September 8, 2026 release removed Cascade. Use Devin Local and its current configuration, not the old Cascade MCP file.
 
 ## Ask your agent to install and set up
 
@@ -68,13 +64,13 @@ After installing, ask: **"Use serpapi-setup to configure and verify SerpApi for 
 | MCP | [Connect a supported client](skills/serpapi-setup/references/mcp.md) and verify its SerpApi tool. |
 | Raw cURL | [Use cURL directly](skills/serpapi-setup/references/curl.md) with no additional packages. |
 
-Get a missing key from the [dashboard](https://serpapi.com/dashboard). Setup supports OS secret stores, existing CLI credentials, and a private-file fallback outside the repository. See [credential storage](skills/serpapi-setup/references/credentials.md) for protection limits and how agents retrieve keys. Enter keys through a hidden terminal prompt or credential UI.
+Get your API key from the [SerpApi dashboard](https://serpapi.com/dashboard).
 
 ## Verify
 
 Start a fresh agent session and check that `serpapi-setup` and `serpapi-web-search` appear in its skill list. Ask the agent to follow `serpapi-setup` and finish any pending verification.
 
-Setup makes one small real search through the selected route, which may use a credit. It checks the response as well as transport success. A saved key or registered MCP server is not enough. After it passes, ask **"Use serpapi-web-search to find recent news about SerpApi and cite the sources."**
+Setup makes one small real search through the selected route, which may use a credit. It checks the response as well as transport success. After it passes, ask **"Use serpapi-web-search to find recent news about SerpApi and cite the sources."**
 
 ## See Also
 

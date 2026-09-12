@@ -133,6 +133,28 @@ function curl.exe {
     assert not Path(capture.read_text()).exists()
 
 
+@pytest.mark.skipif(not shutil.which('pwsh'), reason='PowerShell runtime unavailable; required in Windows CI')
+@pytest.mark.parametrize('ending', [b'', b'\n', b'\r\n'], ids=['no-newline', 'lf', 'crlf'])
+def test_powershell_credential_file_round_trip_with_line_endings(tmp_path, ending):
+    path = ROOT / 'skills/serpapi-setup/references/credentials.md'
+    store, load = [block.source for block in code_blocks(path.read_text()) if block.language == 'powershell']
+    script = tmp_path / 'credentials.ps1'
+    mock = "function Read-Host { ConvertTo-SecureString $env:AUDIT_KEY -AsPlainText -Force }\n"
+    env = {**os.environ, 'LOCALAPPDATA': str(tmp_path), 'AUDIT_KEY': FAKE_KEY, 'SERPAPI_KEY': ''}
+    script.write_text(mock + store)
+    first = subprocess.run(['pwsh', '-NoProfile', '-File', str(script)], env=env, capture_output=True, text=True, timeout=20)
+    assert first.returncode == 0, first.stderr
+    key_file = tmp_path / 'SerpApi/api-key.dpapi'
+    serialized = key_file.read_bytes()
+    assert serialized and not serialized.endswith((b'\r', b'\n'))
+    key_file.write_bytes(serialized + ending)
+    # File parsing is portable; DPAPI protection is checked separately on Windows.
+    script.write_text(load + "\nif ($env:SERPAPI_KEY -ne $env:AUDIT_KEY) { throw 'Round trip failed' }\n")
+    second = subprocess.run(['pwsh', '-NoProfile', '-File', str(script)], env=env, capture_output=True, text=True, timeout=20)
+    assert second.returncode == 0, second.stderr
+    assert FAKE_KEY not in first.stdout + first.stderr + second.stdout + second.stderr
+
+
 @pytest.mark.skipif(sys.platform != 'win32', reason='DPAPI requires native Windows; exercised in Windows CI')
 def test_windows_dpapi_round_trip_and_existing_key_refusal(tmp_path):
     path = ROOT / 'skills/serpapi-setup/references/credentials.md'

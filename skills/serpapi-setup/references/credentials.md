@@ -71,15 +71,15 @@ $serpapiDir = Join-Path $env:LOCALAPPDATA 'SerpApi'
 $serpapiKeyFile = Join-Path $serpapiDir 'api-key.dpapi'
 if (Test-Path $serpapiKeyFile) { throw 'A stored key already exists; reuse it or explicitly rotate it.' }
 New-Item -ItemType Directory -Force -Path $serpapiDir | Out-Null
-Read-Host 'SerpApi API key' -AsSecureString | ConvertFrom-SecureString | Set-Content -LiteralPath $serpapiKeyFile
+Read-Host 'SerpApi API key' -AsSecureString | ConvertFrom-SecureString | Set-Content -LiteralPath $serpapiKeyFile -NoNewline
 ```
 
-Load it in the calling PowerShell process:
+Load it in the calling PowerShell process. Trim the serialized text so files created with a trailing newline remain readable:
 
 ```powershell
 $ErrorActionPreference = 'Stop'
 $serpapiKeyFile = Join-Path $env:LOCALAPPDATA 'SerpApi/api-key.dpapi'
-$serpapiSecret = Get-Content -LiteralPath $serpapiKeyFile -Raw | ConvertTo-SecureString
+$serpapiSecret = (Get-Content -LiteralPath $serpapiKeyFile -Raw).Trim() | ConvertTo-SecureString
 $env:SERPAPI_KEY = [System.Net.NetworkCredential]::new('', $serpapiSecret).Password
 if ([string]::IsNullOrWhiteSpace($env:SERPAPI_KEY)) { throw 'Stored key is empty.' }
 ```
