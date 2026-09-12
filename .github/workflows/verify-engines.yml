@@ -1,108 +1,112 @@
-name: Verify engine table
+name: Verify SerpApi documentation
 
 on:
+  workflow_dispatch:
+    inputs:
+      run_live:
+        description: Run live response checks that may use SerpApi credits
+        required: false
+        default: true
+        type: boolean
+  pull_request:
+    paths:
+      - 'README.md'
+      - 'AGENTS.md'
+      - 'CONTRIBUTING.md'
+      - 'skills/serpapi-web-search/**'
+      - 'skills/serpapi-setup/**'
+      - 'scripts/**'
+      - 'tests/**'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - '.github/workflows/verify-engines.yml'
   push:
     paths:
-      - 'skills/serpapi-web-search/SKILL.md'
+      - 'README.md'
+      - 'AGENTS.md'
+      - 'CONTRIBUTING.md'
+      - 'skills/serpapi-web-search/**'
+      - 'skills/serpapi-setup/**'
+      - 'scripts/**'
+      - 'tests/**'
+      - 'pyproject.toml'
+      - 'uv.lock'
       - '.github/workflows/verify-engines.yml'
   schedule:
-    - cron: '0 9 * * 1'  # Monday 9am — catch stale paths from API changes
+    - cron: '0 9 * * 1'  # Monday 9am UTC. Detect upstream documentation and API drift.
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-engine-docs-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  verify:
+  static:
+    name: ${{ matrix.check.name }}
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        check:
+          - name: Checker regression tests
+            command: uv run --locked pytest
+          - name: Engine catalog and API contracts
+            command: uv run --locked scripts/verify_engine_catalog.py
+          - name: Skill format, syntax and links
+            command: uv run --locked scripts/verify_doc_examples.py --require-powershell
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - uses: astral-sh/setup-uv@v7
+      - run: uv sync --locked
+      - name: Require jq for extraction tests
+        if: matrix.check.name == 'Checker regression tests'
+        run: jq --version
+      - run: ${{ matrix.check.command }}
+
+  platform-credentials:
+    name: Credential examples (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v7
+      - run: uv sync --locked
+      - name: Require PowerShell on Windows
+        if: runner.os == 'Windows'
+        run: pwsh -NoProfile -Command '$PSVersionTable.PSVersion.ToString()'
+      - run: uv run --locked pytest tests/test_setup_credentials.py tests/test_setup_requests.py
+
+  live:
+    name: Live response checks
+    if: github.event_name != 'pull_request' && (github.event_name != 'workflow_dispatch' || inputs.run_live)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
     env:
       SERPAPI_KEY: ${{ secrets.SERPAPI_KEY }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - name: Verify each engine's response path
-        run: |
-          set -euo pipefail
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
 
-          if [ -z "${SERPAPI_KEY:-}" ]; then
-            echo "::warning::SERPAPI_KEY not set (fork or missing secret). Skipping."
-            exit 0
-          fi
+      - uses: astral-sh/setup-uv@v7
+      - run: uv sync --locked
 
-          PASS=0; FAIL=0; SKIP=0
-
-          # Hardcoded engine→query and engine→result_key maps.
-          # Update these when SKILL.md engine table changes.
-          declare -A QUERIES=(
-            [google_light]="q=test"
-            [google]="q=test"
-            [google_scholar]="q=attention+is+all+you+need"
-            [google_maps]="q=Central+Park+New+York"
-            [google_maps_reviews]="data_id=0x89c2589a018531e3:0xb9df1f7387a94119"
-            [youtube]="search_query=hello+world"
-            [google_finance]="q=AAPL:NASDAQ"
-            [google_flights]="departure_id=JFK&arrival_id=LAX&outbound_date=$(date -d '+7 days' +%Y-%m-%d 2>/dev/null || date -v+7d +%Y-%m-%d)&type=2"
-            [google_hotels]="q=hotels+in+Kyoto&check_in_date=$(date -d '+14 days' +%Y-%m-%d 2>/dev/null || date -v+14d +%Y-%m-%d)&check_out_date=$(date -d '+16 days' +%Y-%m-%d 2>/dev/null || date -v+16d +%Y-%m-%d)&adults=2"
-            [google_shopping_light]="q=headphones"
-            [google_news_light]="q=technology"
-            [google_images_light]="q=sunset"
-            [google_jobs]="q=software+engineer"
-            [apple_app_store]="term=Notion"
-            [bing]="q=test"
-            [duckduckgo]="q=test"
-          )
-
-          declare -A RESULT_KEYS=(
-            [google_light]="organic_results"
-            [google]="organic_results"
-            [google_scholar]="organic_results"
-            [google_maps]="place_results|local_results"
-            [google_maps_reviews]="reviews"
-            [youtube]="video_results"
-            [google_finance]="summary"
-            [google_flights]="best_flights"
-            [google_hotels]="properties"
-            [google_shopping_light]="shopping_results"
-            [google_news_light]="news_results"
-            [google_images_light]="images_results"
-            [google_jobs]="jobs_results"
-            [apple_app_store]="organic_results"
-            [bing]="organic_results"
-            [duckduckgo]="organic_results"
-          )
-
-          for engine in "${!QUERIES[@]}"; do
-            params="${QUERIES[$engine]}"
-            expected_key="${RESULT_KEYS[$engine]}"
-
-            resp=$(curl -s "https://serpapi.com/search.json?engine=${engine}&${params}&api_key=${SERPAPI_KEY}")
-
-            # Check if result key exists and is non-empty (supports pipe-separated alternatives)
-            has_key=$(echo "$resp" | python3 -c "
-          import json, sys
-          d = json.load(sys.stdin)
-          keys = '${expected_key}'.split('|')
-          if any(k in d and d[k] for k in keys):
-              print('yes')
-          else:
-              print('no')
-          " 2>/dev/null || echo "error")
-
-            if [ "$has_key" = "yes" ]; then
-              echo "✓ $engine → $expected_key"
-              PASS=$((PASS + 1))
-            elif [ "$has_key" = "error" ]; then
-              echo "⊘ $engine → SKIP (parse error)"
-              SKIP=$((SKIP + 1))
-            else
-              echo "✗ $engine → expected '$expected_key' not found"
-              echo "  Response keys: $(echo "$resp" | python3 -c "import json,sys; print(list(json.load(sys.stdin).keys())[:10])" 2>/dev/null)"
-              FAIL=$((FAIL + 1))
-            fi
-
-            sleep 1  # rate limit courtesy
-          done
-
-          echo ""
-          echo "=== Results: $PASS pass, $FAIL fail, $SKIP skip ==="
-
-          if [ "$FAIL" -gt 0 ]; then
-            echo "::error::$FAIL engine(s) returned unexpected response structure"
-            exit 1
-          fi
+      - name: Check documented live response structures
+        run: uv run --locked scripts/verify_live_responses.py

@@ -1,5 +1,7 @@
 .sisyphus/
-*.py
 __pycache__/
 .aut-traces/
 .opencode/
+.idea/
+.venv/
+.pytest_cache/
