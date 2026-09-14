@@ -10,6 +10,7 @@
 - `skills/serpapi-setup/SKILL.md` — environment detection, route selection, verification, and repair
 - `skills/serpapi-setup/references/` — CLI, MCP, cURL, and credential storage instructions
 - `skills/serpapi-setup/scripts/save-key.sh` — private-file credential storage when an OS secret store is unavailable
+- `skills/serpapi-setup/scripts/save-key.ps1` — Windows password dialog or terminal prompt with DPAPI storage
 - `skills/serpapi-web-search/SKILL.md` — core skill: engines, parameters, examples
 - `skills/serpapi-web-search/references/` — engine catalog, recipes, and gotchas
 - `scripts/` — documentation, catalog, and live-response validators

@@ -61,11 +61,13 @@ The catalog checker reads `llms.txt`, canonical API pages, and configured nested
 The tests in [tests/](tests/) cover different boundaries:
 
 - `test_setup_credentials.py` exercises private-file permissions, hidden input, exact key storage, overwrite handling, concurrent writers, symlinks, Git worktrees, and shell tracing with synthetic keys.
-- `test_setup_requests.py` executes the documented cURL and credential-loading snippets with mocked commands, tests the CLI verification filter, and checks PowerShell HTTP, API, JSON, and cleanup behavior. Native Windows also tests DPAPI storage and retrieval. POSIX cURL still requires the documented JSON inspection after transport success.
+- `test_setup_requests.py` executes the documented cURL and credential-loading snippets with mocked commands, tests the CLI verification filter, and checks PowerShell syntax, HTTP, API, JSON, and cleanup behavior. Native Windows also tests the credential helper's DPAPI round trip, rejected input, cancellation, overwrite refusal, and junction refusal. POSIX cURL still requires the documented JSON inspection after transport success.
 - `test_skill_recipes.py` copies both skill folders into an isolated directory, checks that their links stay within the bundle, and exercises parallel request failures, cleanup, and Maps extraction. Flights extraction is covered in `test_documentation_checks.py`.
 - `test_documentation_checks.py` and `test_checker_resilience.py` test malformed documentation, request validation, response paths, catalog refresh behavior, live-response assertions, and partial upstream failures.
 
 Host jq tests do not establish the behavior of the CLI's embedded evaluator. Copying skill folders does not exercise an IDE's loader or register an MCP server. Verify those changes in the affected client and record the result in your PR. Syntax checks do not validate every prose instruction, dynamic token, parameter combination, or engine's live availability.
+
+For setup changes, use a fresh client session with neither a SerpApi connection nor a stored key. Ask for a search using SerpApi and check that the agent starts setup, asks only for needed choices, waits for secret input, verifies the selected route, and resumes the original search. It should keep the task pending if setup is declined or blocked. On Windows, also launch the helper from the actual agent host and confirm the masked dialog is usable, Save stores the key, and Cancel leaves setup pending. Automated credential tests replace console input and do not prove that a desktop dialog is visible or usable from a client.
 
 ### Refreshing the engine catalog
 

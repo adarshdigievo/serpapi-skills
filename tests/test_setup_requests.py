@@ -14,6 +14,16 @@ from verify_doc_examples import run_syntax_check
 GUIDE = ROOT / 'skills/serpapi-setup/references/curl.md'
 FAKE_KEY = 'test-key-quote"and\\slash'
 GOOD_BODY = {"search_metadata": {"status": "Success"}, "organic_results": [{"title": "Coffee", "link": "https://example.com"}]}
+WINDOWS_HELPER = ROOT / 'skills/serpapi-setup/scripts/save-key.ps1'
+
+
+def windows_load_snippet():
+    guide = ROOT / 'skills/serpapi-setup/references/credentials.md'
+    return next(block.source for block in code_blocks(guide.read_text()) if block.language == 'powershell' and 'ConvertTo-SecureString' in block.source)
+
+
+def windows_helper_invocation():
+    return "& '" + str(WINDOWS_HELPER).replace("'", "''") + "' -Terminal\n"
 
 
 @pytest.mark.skipif(sys.platform == 'win32', reason='POSIX cURL examples')
@@ -102,6 +112,7 @@ def test_powershell_parser_checks_actual_examples_and_rejects_invalid_syntax():
         for block in code_blocks(path.read_text()):
             if block.language == 'powershell':
                 assert not run_syntax_check('powershell', block.source), path
+    assert not run_syntax_check('powershell', WINDOWS_HELPER.read_text())
     assert run_syntax_check('powershell', 'if ( {')
 
 
@@ -136,12 +147,16 @@ function curl.exe {
 @pytest.mark.skipif(not shutil.which('pwsh'), reason='PowerShell runtime unavailable; required in Windows CI')
 @pytest.mark.parametrize('ending', [b'', b'\n', b'\r\n'], ids=['no-newline', 'lf', 'crlf'])
 def test_powershell_credential_file_round_trip_with_line_endings(tmp_path, ending):
-    path = ROOT / 'skills/serpapi-setup/references/credentials.md'
-    store, load = [block.source for block in code_blocks(path.read_text()) if block.language == 'powershell']
     script = tmp_path / 'credentials.ps1'
-    mock = "function Read-Host { ConvertTo-SecureString $env:AUDIT_KEY -AsPlainText -Force }\n"
     env = {**os.environ, 'LOCALAPPDATA': str(tmp_path), 'AUDIT_KEY': FAKE_KEY, 'SERPAPI_KEY': ''}
-    script.write_text(mock + store)
+    # Synthetic serialized input exercises the loader on every PowerShell platform.
+    script.write_text("""
+$ErrorActionPreference = 'Stop'
+$store = Join-Path $env:LOCALAPPDATA 'SerpApi'
+New-Item -ItemType Directory -Path $store | Out-Null
+$secret = ConvertTo-SecureString $env:AUDIT_KEY -AsPlainText -Force
+ConvertFrom-SecureString $secret | Set-Content -LiteralPath (Join-Path $store 'api-key.dpapi') -NoNewline
+""")
     first = subprocess.run(['pwsh', '-NoProfile', '-File', str(script)], env=env, capture_output=True, text=True, timeout=20)
     assert first.returncode == 0, first.stderr
     key_file = tmp_path / 'SerpApi/api-key.dpapi'
@@ -149,27 +164,92 @@ def test_powershell_credential_file_round_trip_with_line_endings(tmp_path, endin
     assert serialized and not serialized.endswith((b'\r', b'\n'))
     key_file.write_bytes(serialized + ending)
     # File parsing is portable; DPAPI protection is checked separately on Windows.
-    script.write_text(load + "\nif ($env:SERPAPI_KEY -ne $env:AUDIT_KEY) { throw 'Round trip failed' }\n")
+    script.write_text(windows_load_snippet() + "\nif ($env:SERPAPI_KEY -ne $env:AUDIT_KEY) { throw 'Round trip failed' }\n")
     second = subprocess.run(['pwsh', '-NoProfile', '-File', str(script)], env=env, capture_output=True, text=True, timeout=20)
     assert second.returncode == 0, second.stderr
     assert FAKE_KEY not in first.stdout + first.stderr + second.stdout + second.stderr
 
 
 @pytest.mark.skipif(sys.platform != 'win32', reason='DPAPI requires native Windows; exercised in Windows CI')
-def test_windows_dpapi_round_trip_and_existing_key_refusal(tmp_path):
-    path = ROOT / 'skills/serpapi-setup/references/credentials.md'
-    snippets = [block.source for block in code_blocks(path.read_text()) if block.language == 'powershell']
-    store, load = snippets
+@pytest.mark.parametrize('shell', ['pwsh', 'powershell.exe'])
+def test_windows_dpapi_round_trip_and_existing_key_refusal(tmp_path, shell):
+    if not shutil.which(shell):
+        pytest.skip(f'{shell} unavailable')
     script = tmp_path / 'dpapi.ps1'
-    # Replace only interactive input, leaving the documented DPAPI/file operations intact.
+    # Replace only console input, leaving the helper's DPAPI/file operations intact.
     mock = "function Read-Host { ConvertTo-SecureString $env:AUDIT_KEY -AsPlainText -Force }\n"
-    script.write_text(mock + store + '\n' + load + "\nif ($env:SERPAPI_KEY -ne $env:AUDIT_KEY) { throw 'Round trip failed' }\n")
+    script.write_text("$ErrorActionPreference = 'Stop'\n" + mock + windows_helper_invocation() + windows_load_snippet() + "\nif ($env:SERPAPI_KEY -ne $env:AUDIT_KEY) { throw 'Round trip failed' }\n")
     env = {**os.environ, 'LOCALAPPDATA': str(tmp_path), 'AUDIT_KEY': FAKE_KEY}
-    first = subprocess.run(['pwsh', '-NoProfile', '-File', str(script)], env=env, capture_output=True, text=True, timeout=20)
+    first = subprocess.run([shell, '-NoProfile', '-File', str(script)], env=env, capture_output=True, text=True, timeout=20)
     assert first.returncode == 0, first.stderr
     encrypted = (tmp_path / 'SerpApi/api-key.dpapi').read_bytes()
     assert FAKE_KEY.encode() not in encrypted
-    second = subprocess.run(['pwsh', '-NoProfile', '-File', str(script)], env=env, capture_output=True, text=True, timeout=20)
+    assert encrypted and not encrypted.endswith((b'\r', b'\n'))
+    second = subprocess.run([shell, '-NoProfile', '-File', str(script)], env=env, capture_output=True, text=True, timeout=20)
     assert second.returncode != 0
     assert (tmp_path / 'SerpApi/api-key.dpapi').read_bytes() == encrypted
     assert FAKE_KEY not in first.stdout + first.stderr + second.stdout + second.stderr
+
+
+@pytest.mark.skipif(not shutil.which('pwsh'), reason='PowerShell runtime unavailable')
+@pytest.mark.parametrize('contents', [None, 'invalid-ciphertext', ''])
+def test_windows_loader_clears_stale_key_on_failure(tmp_path, contents):
+    store = tmp_path / 'SerpApi'
+    store.mkdir()
+    if contents is not None:
+        (store / 'api-key.dpapi').write_text(contents)
+    script = tmp_path / 'load.ps1'
+    script.write_text("try {\n" + windows_load_snippet() + "\n} catch {\nif ($env:SERPAPI_KEY) { throw 'Stale key retained' }; Write-Output 'CLEARED'; exit 0\n}\nthrow 'Unexpected success'\n")
+    env = {**os.environ, 'LOCALAPPDATA': str(tmp_path), 'SERPAPI_KEY': FAKE_KEY}
+    result = subprocess.run(['pwsh', '-NoProfile', '-File', str(script)], env=env, capture_output=True, text=True, timeout=20)
+    assert result.returncode == 0 and 'CLEARED' in result.stdout, result.stderr
+    assert FAKE_KEY not in result.stdout + result.stderr
+
+
+@pytest.mark.skipif(sys.platform == 'win32' or not shutil.which('pwsh'), reason='Non-Windows PowerShell check')
+def test_windows_helper_refuses_unencrypted_non_windows_storage(tmp_path):
+    env = {**os.environ, 'LOCALAPPDATA': str(tmp_path), 'SERPAPI_KEY': FAKE_KEY}
+    result = subprocess.run(['pwsh', '-NoProfile', '-File', str(WINDOWS_HELPER)], env=env, capture_output=True, text=True, timeout=20)
+    assert result.returncode != 0 and 'requires native Windows' in result.stderr
+    assert not (tmp_path / 'SerpApi').exists()
+    assert FAKE_KEY not in result.stdout + result.stderr
+
+
+@pytest.mark.skipif(sys.platform != 'win32', reason='Windows helper storage; exercised in Windows CI')
+@pytest.mark.parametrize('mode', ['empty', 'blank', 'multiline', 'cancel', 'concurrent', 'junction'])
+def test_windows_helper_failed_input_does_not_write_or_overwrite(tmp_path, mode):
+    script = tmp_path / 'input.ps1'
+    script.write_text(r"""
+$ErrorActionPreference = 'Stop'
+$store = Join-Path $env:LOCALAPPDATA 'SerpApi'
+if ($env:AUDIT_MODE -eq 'junction') {
+    $target = Join-Path $env:LOCALAPPDATA 'target'
+    New-Item -ItemType Directory -Path $target | Out-Null
+    New-Item -ItemType Junction -Path $store -Target $target | Out-Null
+}
+function Read-Host {
+    switch ($env:AUDIT_MODE) {
+        'empty' { return New-Object System.Security.SecureString }
+        'blank' { return ConvertTo-SecureString '   ' -AsPlainText -Force }
+        'multiline' { return ConvertTo-SecureString ($env:AUDIT_KEY + "`nsecond-line") -AsPlainText -Force }
+        'cancel' { throw 'Input cancelled' }
+        'concurrent' {
+            New-Item -ItemType Directory -Path $store | Out-Null
+            [System.IO.File]::WriteAllText((Join-Path $store 'api-key.dpapi'), 'existing-ciphertext')
+        }
+        'junction' { throw 'Should refuse the junction before prompting' }
+    }
+    return ConvertTo-SecureString $env:AUDIT_KEY -AsPlainText -Force
+}
+""" + windows_helper_invocation())
+    env = {**os.environ, 'LOCALAPPDATA': str(tmp_path), 'AUDIT_KEY': FAKE_KEY, 'AUDIT_MODE': mode}
+    result = subprocess.run(['pwsh', '-NoProfile', '-File', str(script)], env=env, capture_output=True, text=True, timeout=20)
+    assert result.returncode != 0
+    key_file = tmp_path / 'SerpApi/api-key.dpapi'
+    if mode == 'concurrent':
+        assert key_file.read_text() == 'existing-ciphertext'
+    else:
+        assert not key_file.exists()
+    if mode == 'junction':
+        assert 'symbolic links or junctions' in result.stderr
+    assert FAKE_KEY not in result.stdout + result.stderr

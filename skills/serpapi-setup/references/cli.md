@@ -17,7 +17,7 @@ go install github.com/serpapi/serpapi-cli/cmd/serpapi@latest
 
 The Go binary directory must be on the agent's PATH. For other environments, check the official repository's current installation options.
 
-Reuse an injected `SERPAPI_KEY`, a key loaded from the user's secret store, or an existing CLI login. Otherwise have the user run `serpapi login` in an interactive terminal. It hides input, checks the Account API, and saves the key. Read [credentials.md](credentials.md) for the actual OS-specific location and protection limits.
+Reuse an injected `SERPAPI_KEY`, a key loaded from the user's secret store, or an existing CLI login. Otherwise have the user run `serpapi login` in a terminal they can interact with. It hides input, checks the Account API, and saves the key. If the agent's terminal cannot receive user input, use a client secret field or the [Windows password-dialog helper](credentials.md#windows-encrypted-storage), then load the stored key into the CLI's process. Read [credentials.md](credentials.md) for storage locations and protection limits.
 
 The CLI resolves `--api-key` first, then `SERPAPI_KEY`, then saved config. Avoid the flag because its value is visible in process arguments. If a new login appears ineffective, check for a stale environment override by presence only.
 

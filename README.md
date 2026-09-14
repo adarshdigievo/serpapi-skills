@@ -3,7 +3,7 @@
 Search the web with 100+ SerpApi engines. Install both skills:
 
 - `serpapi-setup` identifies the environment, helps you choose CLI, supported MCP, or raw cURL, stores credentials, and verifies access.
-- `serpapi-web-search` handles engine selection and result extraction. If a request fails, it returns to setup for diagnosis and verification.
+- `serpapi-web-search` handles engine selection and result extraction. Missing access or a failed request leads into guided setup, then back to the original search through SerpApi.
 
 ## Install the skills across your projects
 
@@ -56,7 +56,7 @@ Verify both installed SKILL.md files and their relative references, then follow 
 
 ## Connect SerpApi
 
-After installing, ask: **"Use serpapi-setup to configure and verify SerpApi for this environment."** Setup reuses working access or helps you choose:
+After installing, ask: **"Use serpapi-setup to configure and verify SerpApi for this environment."** You can also start a search with `serpapi-web-search`; its instructions direct the agent to help with missing access before searching. Setup reuses working access or helps you choose:
 
 | Route | Setup |
 |---|---|
@@ -64,7 +64,7 @@ After installing, ask: **"Use serpapi-setup to configure and verify SerpApi for 
 | MCP | [Connect a supported client](skills/serpapi-setup/references/mcp.md) and verify its SerpApi tool. |
 | Raw cURL | [Use cURL directly](skills/serpapi-setup/references/curl.md) with no additional packages. |
 
-Get your API key from the [SerpApi dashboard](https://serpapi.com/dashboard).
+Get your API key from the [SerpApi dashboard](https://serpapi.com/dashboard). Enter it in a secret field or hidden prompt. On Windows, setup includes a [password-dialog helper](skills/serpapi-setup/references/credentials.md#windows-encrypted-storage) for agent terminals that cannot accept input. If setup needs your input or a client restart, the search stays pending. The skills instruct the agent to keep using SerpApi unless you explicitly choose another search provider.
 
 ## Verify
 

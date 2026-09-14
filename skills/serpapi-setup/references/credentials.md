@@ -2,7 +2,7 @@
 
 Reuse the credential source already working for the chosen route. The skill can use a key through the user's process or MCP connection without displaying it. Do not extract a key from a working MCP connector to create a second store.
 
-For new storage, prefer the client's sensitive credential input or an available OS secret store. The commands below are for the user's terminal. Secret reads must happen inside a variable assignment or pipe, never as a standalone tool call that prints the key. Disable shell tracing before reading secrets. Do not put literal keys in commands, chat, `.env` files in repositories, or shell profiles.
+For new storage, prefer the client's sensitive credential input or an available OS secret store. Explain the prompt and launch it when the host lets the user interact with it. Otherwise give the exact command for their terminal and wait for completion. A tool's stdin or allocated PTY is not necessarily visible or writable by the user. Secret reads must happen inside a variable assignment or pipe, never as a standalone tool call that prints the key. Disable shell tracing before reading secrets. Do not put literal keys in commands, chat, `.env` files in repositories, or shell profiles.
 
 The load functions return a failure without exiting your terminal and clear a stale environment key when loading fails. Stop on that failure; do not make a request. An environment variable lasts only in that process and its children. Load the key again for later agent commands, or launch the client from the process that loaded it. A desktop app already running will not inherit an export from an unrelated terminal. Cloud connectors cannot read the local keychain or filesystem.
 
@@ -63,25 +63,35 @@ See the [secret-tool manual](https://manpages.debian.org/bookworm/libsecret-tool
 
 On native Windows, PowerShell's [ConvertFrom-SecureString](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.security/convertfrom-securestring) uses DPAPI when no encryption key is supplied. Keep the encrypted file in the current user's local application data. This recipe is Windows-only; do not assume the same protection on other platforms.
 
-Have the user run:
+Use [save-key.ps1](../scripts/save-key.ps1) for a masked Windows password dialog when an agent's terminal cannot accept user input. Resolve the helper's absolute path inside the installed skill, then launch it directly on the user's Windows desktop:
 
 ```powershell
-$ErrorActionPreference = 'Stop'
-$serpapiDir = Join-Path $env:LOCALAPPDATA 'SerpApi'
-$serpapiKeyFile = Join-Path $serpapiDir 'api-key.dpapi'
-if (Test-Path $serpapiKeyFile) { throw 'A stored key already exists; reuse it or explicitly rotate it.' }
-New-Item -ItemType Directory -Force -Path $serpapiDir | Out-Null
-Read-Host 'SerpApi API key' -AsSecureString | ConvertFrom-SecureString | Set-Content -LiteralPath $serpapiKeyFile -NoNewline
+powershell.exe -NoProfile -STA -File 'C:\absolute\path\to\serpapi-setup\scripts\save-key.ps1'
 ```
 
-Load it in the calling PowerShell process. Trim the serialized text so files created with a trailing newline remain readable:
+This invokes the script in a single-threaded apartment for the dialog. Do not launch bare `powershell.exe` or send a later command to an unrelated new window. Tell the user to paste the key into **SerpApi API key** and select **Save**. Wait for the helper's result; a spawned process or visible window does not prove storage. Cancellation leaves setup pending. If execution policy blocks the script, use a supported client credential UI or ask the user to run an approved copy; do not add an execution-policy bypass.
+
+The helper uses a [masked textbox](https://learn.microsoft.com/en-us/dotnet/api/system.windows.forms.textbox.usesystempasswordchar), writes DPAPI ciphertext to `%LOCALAPPDATA%\SerpApi\api-key.dpapi`, and refuses blank input, existing files, and symbolic links or junctions in the path. It accepts no plaintext key argument. For a real user-operated console, append `-Terminal` to use `Read-Host -AsSecureString`. Windows PowerShell 5.1 and Windows `pwsh -STA` can run it. Remote, service, and headless sessions may have no interactive desktop; use their secret input mechanism instead.
+
+The helper stores the key without changing the parent agent's environment. Load it in the PowerShell process that will issue the request. Trim the serialized text so files created with a trailing newline remain readable:
 
 ```powershell
 $ErrorActionPreference = 'Stop'
+$env:SERPAPI_KEY = $null
+$serpapiSecret = $null
 $serpapiKeyFile = Join-Path $env:LOCALAPPDATA 'SerpApi/api-key.dpapi'
-$serpapiSecret = (Get-Content -LiteralPath $serpapiKeyFile -Raw).Trim() | ConvertTo-SecureString
-$env:SERPAPI_KEY = [System.Net.NetworkCredential]::new('', $serpapiSecret).Password
-if ([string]::IsNullOrWhiteSpace($env:SERPAPI_KEY)) { throw 'Stored key is empty.' }
+try {
+  $serpapiSecret = (Get-Content -LiteralPath $serpapiKeyFile -Raw).Trim() | ConvertTo-SecureString
+  $env:SERPAPI_KEY = [System.Net.NetworkCredential]::new('', $serpapiSecret).Password
+  if ([string]::IsNullOrWhiteSpace($env:SERPAPI_KEY) -or $env:SERPAPI_KEY -match '[\r\n]') { throw 'Stored key is empty or invalid.' }
+}
+catch {
+  $env:SERPAPI_KEY = $null
+  throw 'Could not load the stored SerpApi key for this Windows user and machine; resume serpapi-setup.'
+}
+finally {
+  if ($null -ne $serpapiSecret) { $serpapiSecret.Dispose() }
+}
 ```
 
 The file belongs to that Windows user and machine. Supply credentials separately inside WSL, containers, and remote hosts. Do not log the decrypted environment or run secret-loading commands under a debugger that prints values.
