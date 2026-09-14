@@ -180,6 +180,9 @@ def test_windows_dpapi_round_trip_and_existing_key_refusal(tmp_path, shell):
     mock = "function Read-Host { ConvertTo-SecureString $env:AUDIT_KEY -AsPlainText -Force }\n"
     script.write_text("$ErrorActionPreference = 'Stop'\n" + mock + windows_helper_invocation() + windows_load_snippet() + "\nif ($env:SERPAPI_KEY -ne $env:AUDIT_KEY) { throw 'Round trip failed' }\n")
     env = {**os.environ, 'LOCALAPPDATA': str(tmp_path), 'AUDIT_KEY': FAKE_KEY}
+    if shell == 'powershell.exe':
+        # Python inherits pwsh's module paths; let Windows PowerShell rebuild its own.
+        env = {name: value for name, value in env.items() if name.upper() != 'PSMODULEPATH'}
     first = subprocess.run([shell, '-NoProfile', '-File', str(script)], env=env, capture_output=True, text=True, timeout=20)
     assert first.returncode == 0, first.stderr
     encrypted = (tmp_path / 'SerpApi/api-key.dpapi').read_bytes()

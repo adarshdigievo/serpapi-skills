@@ -29,6 +29,7 @@ class Check:
     exact_top_level_keys: tuple[str, ...] = ()
     alternative_path_groups: tuple[tuple[str, ...], ...] = ()
     expected_values: tuple[tuple[str, Any], ...] = ()
+    required_item_paths: tuple[tuple[str, tuple[str, ...]], ...] = ()
 
 
 def first(value: Any) -> Any:
@@ -81,7 +82,7 @@ def build_checks() -> list[Check]:
         Check("YouTube", {"engine": "youtube", "search_query": "machine learning tutorial"}, ("video_results[].title", "video_results[].link", "video_results[].views", "video_results[].length")),
         Check("Google Finance", {"engine": "google_finance", "q": "AAPL:NASDAQ"}, ("summary.price", "summary.extracted_price", "summary.exchange", "summary.currency", "graph[]", "news_results[]")),
         Check("Google Flights", {"engine": "google_flights", "departure_id": "JFK", "arrival_id": "LAX", "outbound_date": flight_date, "type": "2"}, (), alternative_path_groups=tuple(tuple(f"{root}[].{path}" for path in ("price", "total_duration", "flights[].airline")) for root in ("best_flights", "other_flights"))),
-        Check("Google Hotels", {"engine": "google_hotels", "q": "hotels in Kyoto", "check_in_date": check_in, "check_out_date": check_out, "adults": "2", "sort_by": "8"}, ("properties[].name", "properties[].rate_per_night.extracted_lowest", "properties[].total_rate.extracted_lowest", "properties[].overall_rating")),
+        Check("Google Hotels", {"engine": "google_hotels", "q": "hotels in Kyoto", "check_in_date": check_in, "check_out_date": check_out, "adults": "2", "sort_by": "8"}, (), required_item_paths=(("properties", ("name", "rate_per_night.extracted_lowest", "total_rate.extracted_lowest", "overall_rating")),)),
         Check("Google Jobs", {"engine": "google_jobs", "q": "software engineer"}, ("jobs_results[].title", "jobs_results[].company_name", "jobs_results[].location")),
         Check("Apple App Store", {"engine": "apple_app_store", "term": "Notion"}, ("organic_results[].title", "organic_results[].rating[].rating", "organic_results[].rating[].count", "organic_results[].developer.name")),
         Check("Bing", {"engine": "bing", "q": "coffee"}, ("organic_results[].title", "organic_results[].link", "organic_results[].snippet")),
@@ -130,6 +131,13 @@ def validate(check: Check, data: dict[str, Any]) -> str | None:
         return f"none of these paths exist: {', '.join(check.any_paths)}"
     if check.alternative_path_groups and not any(all(has_path(data, path) for path in group) for group in check.alternative_path_groups):
         return "no complete alternative response group found"
+    for collection, paths in check.required_item_paths:
+        try:
+            items = resolve(data, collection)
+        except KeyError:
+            return f"missing or empty collection: {collection}"
+        if not isinstance(items, list) or not any(all(has_path(item, path) for path in paths) for item in items):
+            return f"no item in {collection} has all required paths: {', '.join(paths)}"
     for path, expected in check.expected_values:
         if not has_path(data, path) or resolve(data, path) != expected:
             return f"unexpected value at {path}; expected {expected!r}"

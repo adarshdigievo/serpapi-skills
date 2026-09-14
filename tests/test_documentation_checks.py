@@ -210,6 +210,28 @@ def test_live_flights_accept_other_flights_but_require_a_complete_group():
     assert live.validate(check, {"error": "Upstream error"}) == "Upstream error"
 
 
+def test_live_hotels_accept_a_later_property_with_complete_prices():
+    check = next(check for check in live.build_checks() if check.name == "Google Hotels")
+    unpriced = {"name": "Unavailable hotel", "overall_rating": 4.9}
+    priced = {"name": "Available hotel", "overall_rating": 4.8, "rate_per_night": {"extracted_lowest": 120}, "total_rate": {"extracted_lowest": 240}}
+    assert live.validate(check, {"properties": [unpriced, priced]}) is None
+    assert live.validate(check, {"properties": [unpriced]})
+    assert live.validate(check, {"properties": [priced], "error": "Upstream error"}) == "Upstream error"
+    # Both rates and the identifying fields must belong to the same property.
+    nightly_only = {key: value for key, value in priced.items() if key != "total_rate"}
+    total_only = {key: value for key, value in priced.items() if key != "rate_per_night"}
+    assert live.validate(check, {"properties": [nightly_only, total_only]})
+    for field in ("name", "overall_rating"):
+        assert live.validate(check, {"properties": [{key: value for key, value in priced.items() if key != field}]})
+
+
+@pytest.mark.parametrize("properties", [None, [], {}, [None], "invalid"])
+def test_live_hotels_reject_missing_or_malformed_properties(properties):
+    check = next(check for check in live.build_checks() if check.name == "Google Hotels")
+    assert live.validate(check, {"properties": properties})
+    assert live.validate(check, {})
+
+
 def test_live_expected_value_checks_equality_not_only_presence():
     check = live.Check("echo", {}, (), expected_values=(("search_parameters.as_qdr", "w"),))
     assert live.validate(check, {"search_parameters": {"as_qdr": "w"}}) is None
