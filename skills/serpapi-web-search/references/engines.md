@@ -1,6 +1,6 @@
 # SerpApi engine catalog
 
-Complete list of 120 SerpApi search engines. Prefer `_light` variants for faster, smaller responses. Read the selected engine's MCP resource or linked docs for conditional requirements and optional parameters. A dash means no unconditional input besides engine and authentication.
+Complete list of 121 SerpApi search engines. Prefer `_light` variants for faster, smaller responses. Read the selected engine's MCP resource or linked docs for conditional requirements and optional parameters. A dash means no unconditional input besides engine and authentication.
 
 Links, required inputs, and counts are refreshed from official docs by `scripts/refresh_engine_catalog.py` in the source repository. Descriptions and result mappings are curated.
 
@@ -58,12 +58,13 @@ Links, required inputs, and counts are refreshed from official docs by `scripts/
 | [`duckduckgo_maps`](https://serpapi.com/duckduckgo-maps-api.md) | DuckDuckGo Maps results | q |
 | [`duckduckgo_news`](https://serpapi.com/duckduckgo-news-api.md) | DuckDuckGo News results | q |
 
-## Ebay (2 engines)
+## Ebay (3 engines)
 
 | Engine | Description | Required inputs |
 |---|---|---|
 | [`ebay`](https://serpapi.com/ebay-search-api.md) | eBay product search | _nkw |
 | [`ebay_product`](https://serpapi.com/ebay-product-api.md) | eBay product details | product_id |
+| [`ebay_seller`](https://serpapi.com/ebay-seller-api.md) | eBay seller details and products | seller_id, type |
 
 ## Facebook (1 engines)
 
@@ -76,7 +77,7 @@ Links, required inputs, and counts are refreshed from official docs by `scripts/
 | Engine | Description | Required inputs |
 |---|---|---|
 | [`google`](https://serpapi.com/search-api.md) | Main Google Search results | q |
-| [`google_about_this_result`](https://serpapi.com/google-about-this-result) | Google "About This Result" feature data | q |
+| [`google_about_this_result`](https://serpapi.com/google-about-this-result) | Google "About This Result" feature data | — |
 | [`google_ads`](https://serpapi.com/google-ads-api.md) | Google Ads keyword-level sponsored results (higher rate than Google Search) | location, q |
 | [`google_ads_transparency_center`](https://serpapi.com/google-ads-transparency-center-api.md) | Google Ads Transparency Center — lookup by advertiser | — |
 | [`google_ads_transparency_center_ad_details`](https://serpapi.com/google-ads-transparency-center-ad-details) | Individual ad creative details | advertiser_id, creative_id |
@@ -239,6 +240,7 @@ Links, required inputs, and counts are refreshed from official docs by `scripts/
 | Images (`google_images_light`, `google_images`) | `images_results` |
 | Shopping (`google_shopping_light`, `google_shopping`) | `shopping_results` |
 | Product search (`amazon`, `walmart`, `ebay`) | `organic_results` |
+| eBay seller (`ebay_seller`) | `seller_results`, `product_results` |
 | Jobs (`google_jobs`) | `jobs_results` |
 | Maps (`google_maps`) — list | `local_results` |
 | Maps (`google_maps`) — single place | `place_results` |
